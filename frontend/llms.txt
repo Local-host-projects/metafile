@@ -1,0 +1,186 @@
+# Metafile — Agent Guide
+
+You are reading this because you fetched this server's root URL without
+requesting HTML. Good — you are exactly who this document is for. It is
+always available at /llms.txt and /ai.
+
+Metafile is a system of portable, URL-addressable objects that AI agents
+(and humans) read and write through a single link. This document tells you
+every route, every operation, and every rule you need. No UI required.
+
+## Mental model
+
+- A **metafile** is a container (a document). It has a name, a size cap,
+  and a version.
+- Inside a metafile are **artifacts** (blocks). Seven types exist:
+  facts (memory), spreadsheet, html, canvas, calendar, timer, media.
+- A metafile holds ANY NUMBER of artifacts, mixed freely.
+- **Possession of a share link IS the permission.** Each metafile has an
+  rw link (read-write) and an ro link (read-only). Tokens are SHA-256
+  hashed at rest; the raw token appears only in the URL you were given.
+- **Every write is signed and versioned.** You must send `agent` (your
+  name/fingerprint) and `if_version` (the version you last read). If the
+  world moved, you get HTTP 409 plus the current state — re-apply and
+  retry. This is how two agents avoid silently clobbering each other.
+
+## Addressing
+
+Two interchangeable URL shapes; the token is the credential either way:
+
+    GET /m/{metafile_id}?token={token}&op={op}&artifact={artifact_id}&...
+    GET /m/{metafile_id}/{token}?op={op}&artifact={artifact_id}&...
+
+The query-string form also accepts POST for large payloads:
+
+    POST /m/{metafile_id}/bulk?token={token}
+    {"op": "...", "artifact": "...", "value": ..., "if_version": N, "agent": "you"}
+
+Most content operations need `artifact=<artifact_id>` — fetch first, pick
+the block you want, keep its id.
+
+## Operations (op=...)
+
+Reads (rw or ro token):
+- `fetch` — whole metafile: name, version, tier, size, and every artifact
+  with computed content (spreadsheets evaluated, timers live, media list
+  without payloads).
+- `get&artifact=A&path=P` — one cell / fact / event / timer / media item.
+  - spreadsheet: path = cell ref, e.g. `path=B2` (returns evaluated value)
+  - facts: path = fact id
+  - calendar: path = event id
+  - timer: path = timer id
+  - media: path = item id (returns full base64 payload)
+- `search&artifact=A&q=...&limit=10&offset=0` — TF-IDF ranked search over
+  a facts artifact. Paginated; consume in batches.
+- `history&artifact=A&limit=50` — provenance log: agent, op, summary,
+  version transition, timestamp. Omit `artifact` for whole-file history.
+
+Writes (rw token only; always send `agent` + `if_version`):
+- `set&artifact=A&path=P&value=V` — write one cell / update one fact /
+  fire one timer action / edit html.
+- `append&artifact=A&value=V` — add a fact, stroke, event, timer, or
+  media item (value is the item's text, or a JSON object via /bulk).
+- `delete&artifact=A&path=P` — remove one cell / fact / event / timer /
+  media item.
+- `rename&value=NewName` — rename the metafile.
+- `rename_artifact&artifact=A&value=NewName` — rename a block.
+- `add_artifact&type=facts&name=Notes` — add a block (needs the
+  METAFILE version, not an artifact version).
+- `remove_artifact&artifact=A` — delete a block.
+
+## Live updates (SSE)
+
+Subscribe and re-fetch whenever an event fires — changes made by any
+other agent (or human) appear without polling:
+
+    GET /events/m/{metafile_id}?token=...          -> text/event-stream
+    GET /events/session/{session_id}/{token}       -> text/event-stream
+
+Events (one JSON object per `data:` line): {"kind": "changed"} after any
+content/layout/tier/rename change, {"kind": "deleted"} when the object is
+gone (close the stream), {"kind": "proposals"} when a proposal lands.
+The stream sends keep-alive comments and reconnect-friendly `retry:`;
+re-fetch the object on every event — the event tells you THAT it
+changed, the fetch tells you WHAT changed. Events carry no version
+numbers on purpose: fetch, don't diff.
+
+## Playground sessions
+
+A session is a saved, zoomable, pannable arrangement of windows, each
+pinned to one artifact. Addressed as /session/{id}/{token} with two
+token tiers: owner (arrange, approve) and collaborator (read + propose).
+
+    GET  /sessions                          — list
+    POST /sessions  {name}                  — create (returns both links)
+    GET  /session/{id}/{tok}?op=fetch       — layout + role
+    ...&op=add_window&metafile_id=M&m_token={rw}&artifact_id=A&if_version=V
+    ...&op=place_all&metafile_id=M&m_token={rw}&if_version=V   — place EVERY
+        artifact of metafile M as its own window, gridded, one versioned step
+        (m_token must be M's read-write token; 400 if M has no artifacts)
+    ...&op=move_resize&window_id=W&x=&y=&w=&h=&z=
+    ...&op=remove_window&window_id=W
+    POST /session/{id}/{tok}/propose?name=N&artifact_type=T&agent=you&reason=R
+    ...&op=list_proposals / approve_proposal&proposal_id=P / reject_proposal
+
+Windows carry their metafile's rw token and an artifact_id, so content
+edits via /m/... render live into any field showing that window.
+
+Rule of thumb: artifact content ops check the ARTIFACT's version
+(`if_version` = artifact.version); add/remove/rename ops check the
+METAFILE's version (`if_version` = metafile.version). Both are in every
+fetch response. On 409, the response body carries `current_state` —
+re-read it and retry; do not guess.
+
+## Artifact types & shapes
+
+- facts:      {"facts": [{id, text, tags, at}]} — append value = text.
+- spreadsheet:{"cells": {"A1": {"value": "10"} | {"formula": "=SUM(A1:A5)"}}}
+              Formulas: + - * / ( ), cell refs, SUM/AVERAGE/MIN/MAX/COUNT,
+              ranges A1:B3. Evaluated server-side on every fetch. Errors -> 422.
+- html:       {"html": "<any html/css/js>"} — set value = the source string.
+- canvas:     {"strokes": [{id, color, points: [[x,y],...], at}]} — append a
+              stroke object; strokes merge, they never overwrite.
+- calendar:   {"events": [{id, title, start, end, notes}]} — ISO 8601 times;
+              append needs at least title + start.
+- timer:      {"timers": [{id, label, duration_seconds, status}]} — set value
+              = "start" | "pause" | "reset"; remaining_seconds is computed
+              live server-side, never cached.
+- media:      {"items": [{id, kind, mime, data_base64, caption}]} — append
+              via /bulk with a base64 payload; list views omit payloads.
+
+## Playground sessions
+
+A session is a saved, zoomable arrangement of windows, each pinned to one
+artifact. Addressed as /session/{id}/{token} with two token tiers: owner
+(arrange, approve) and collaborator (read + propose).
+
+    GET  /sessions                          — list
+    POST /sessions  {name}                  — create (returns both links)
+    GET  /session/{id}/{tok}?op=fetch       — layout + role
+    ...&op=add_window&metafile_id=M&m_token={rw}&artifact_id=A&if_version=V
+    ...&op=move_resize&window_id=W&x=&y=&w=&h=&z=
+    ...&op=remove_window&window_id=W
+    POST /session/{id}/{tok}/propose?name=N&artifact_type=T&agent=you&reason=R
+    ...&op=list_proposals / approve_proposal&proposal_id=P / reject_proposal
+
+Proposing never creates anything; only the owner's approval does — that is
+the permission gate for agent-initiated creation.
+
+## Accounts, billing, errors
+
+Humans use accounts (POST /auth/register, /auth/login -> Bearer token for
+dashboard CRUD). Agents don't need one — links are enough. Size caps:
+5 MB free per metafile, 100 MB after a Paystack upgrade; writes that would
+exceed the cap get 402 with instructions.
+
+- 400 bad request (read the message — it names the missing param)
+- 401 missing/invalid credential          - 403 no write permission (ro link)
+- 404 no such object                      - 409 version conflict (see above)
+- 402 over size cap                       - 422 formula error
+- 501 payments not configured on server
+
+## Quick examples
+
+    # fetch everything
+    curl "$URL/m/mf_xxx?token=TOK&op=fetch"
+
+    # add a fact (version from the fetch above)
+    curl "$URL/m/mf_xxx?token=TOK&op=append&artifact=art_yyy&value=sky+is+blue&agent=my-agent&if_version=1"
+
+    # write a formula
+    curl "$URL/m/mf_xxx?token=TOK&op=set&artifact=art_zzz&path=A2&value==A1*2&agent=my-agent&if_version=1"
+
+    # large payload (html page, media, batch facts)
+    curl -X POST "$URL/m/mf_xxx/bulk?token=TOK" -H "Content-Type: application/json" \
+      -d '{"op":"set","artifact":"art_html","value":{"html":"<h1>hi</h1>"},"if_version":3,"agent":"my-agent"}'
+
+## Conventions
+
+- Identify yourself honestly in `agent=` — the mutation log is the audit
+  trail and your writes are attributed.
+- Always fetch before writing; never cache versions across user turns.
+- On 409: read `current_state` from the error, re-apply your edit to the
+  new state, retry once. If it conflicts again, surface the conflict.
+- Prefer /bulk for anything larger than a short string.
+
+End of guide. The human interface is at the same URL in a browser.

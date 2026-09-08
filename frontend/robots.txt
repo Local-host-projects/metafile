@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+# Machine-readable agent guide: /llms.txt

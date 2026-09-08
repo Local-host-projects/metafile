@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Metafile — one address, every agent. Portable objects any AI can read and update through one URL. Agent guide: /llms.txt">
+<title>Metafile</title>
+<link rel="icon" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=6">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">
+    <img src="logo.svg" alt="Metafile">
+    <span class="brand-name">Metafile</span>
+  </div>
+  <nav id="mainNav" style="display:none;">
+    <button class="nav-btn active" id="navDash">Dashboard</button>
+    <button class="nav-btn" id="navPlay">Playgrounds</button>
+  </nav>
+  <a class="ai-link" href="/llms.txt" target="_blank" rel="noopener" title="Machine-readable guide for AI agents">AI guide</a>
+  <div class="topbar-right">
+    <div class="user-chip" id="userChip" style="display:none;">
+      <span class="avatar" id="avatarTx">?</span>
+      <span id="userEmail"></span>
+      <button class="icon-btn" id="logoutBtn" title="Sign out" style="border:none;width:28px;height:28px;"></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <noscript><div style="max-width:560px;margin:80px auto;padding:24px;font:15px system-ui;text-align:center;">Metafile needs JavaScript enabled.</div></noscript>
+
+  <!-- ============ AUTH ============ -->
+  <section id="view-auth" class="view active">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <div class="auth-side">
+          <img src="logo-white.svg" alt="">
+          <h2>One address.<br>Every agent.</h2>
+          <p>A metafile is a portable container of live blocks — memory, spreadsheets, pages, canvases and more — that any AI can read and update through one URL.</p>
+          <ul class="auth-points" id="authPoints"></ul>
+        </div>
+        <div class="auth-form">
+          <div class="auth-tabs">
+            <button id="tabSignin" class="active">Sign in</button>
+            <button id="tabSignup">Create account</button>
+          </div>
+          <div class="form-error" id="authError"></div>
+          <div class="field" id="nameField" style="display:none;">
+            <label for="authName">Your name</label>
+            <input id="authName" placeholder="Ada Lovelace" autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="authEmail">Email</label>
+            <input id="authEmail" type="email" placeholder="you@example.com" autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="authPassword">Password</label>
+            <input id="authPassword" type="password" placeholder="Minimum 8 characters" autocomplete="current-password">
+          </div>
+          <button class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
+          <div class="auth-note">Free 5 MB per metafile · upgrade anytime</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DASHBOARD ============ -->
+  <section id="view-dash" class="view">
+    <div class="page">
+      <div class="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <p id="dashSub">Your metafiles live here.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost" id="playgroundsBtn">Playgrounds</button>
+          <button class="btn btn-primary" id="newFileBtn">+ New metafile</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="search-input" id="dashSearchWrap">
+          <input id="dashSearch" placeholder="Search metafiles…" autocomplete="off">
+        </div>
+      </div>
+      <div class="grid-cards" id="fileGrid"></div>
+      <div class="empty-state" id="dashEmpty" style="display:none;">
+        <div class="big-ic" id="emptyIc"></div>
+        <h3>No metafiles yet</h3>
+        <p>Create your first metafile, then add blocks — memory, spreadsheets,<br>pages, canvases, calendars, timers and media.</p>
+        <button class="btn btn-primary" id="emptyNewBtn">+ Create metafile</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DETAIL ============ -->
+  <section id="view-doc" class="view">
+    <div class="page">
+      <button class="crumb-btn" id="backBtn">Dashboard</button>
+      <div class="doc-head">
+        <div class="doc-title-row">
+          <input class="doc-title" id="docTitle" autocomplete="off">
+          <button class="icon-btn danger" id="deleteFileBtn" title="Delete metafile"></button>
+        </div>
+        <div class="telemetry" id="docTelemetry"></div>
+        <div class="doc-actions" style="margin-top:15px;">
+          <button class="btn btn-ghost btn-sm" id="shareBtn">Share links</button>
+          <button class="btn btn-ghost btn-sm" id="fieldBtn">Open in field →</button>
+          <button class="btn btn-primary btn-sm" id="upgradeBtn" style="display:none;">Upgrade</button>
+        </div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="panel" id="panel"></div>
+    </div>
+  </section>
+</main>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script src="app.js?v=6"></script>
+<script>
+/* Boot watchdog: if the UI fails to start, say so instead of sitting blank. */
+window.addEventListener("load", function () {
+  setTimeout(function () {
+    if (!document.querySelector(".view.active")) {
+      var d = document.createElement("div");
+      d.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#0A0A0B;color:#fff;font:14px system-ui,sans-serif;padding:14px 18px;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.3);";
+      d.textContent = "The app UI did not start. Hard-refresh (Ctrl+Shift+R). If it persists, press F12, open Console, and send me the red error text.";
+      document.body.appendChild(d);
+    }
+  }, 2500);
+});
+</script>
+</body>
+</html>

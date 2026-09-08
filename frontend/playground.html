@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Field — Metafile</title>
+<link rel="icon" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=6">
+</head>
+<body class="playground-body">
+
+<header id="pgTopbar">
+  <img src="logo.svg" class="pg-logo" alt="">
+  <input id="pgName" class="display" autocomplete="off">
+  <div class="topbar-spacer"></div>
+  <button class="pg-btn" id="backBtn">← Studio</button>
+  <button class="pg-btn" id="proposalsBtn">Proposals<span id="proposalsDot"></span></button>
+  <button class="pg-btn primary" id="addBtn">+ Add block</button>
+</header>
+
+<div id="pgMeta">
+  <span>Session <b id="pgSid">—</b></span>
+  <span>Role <b id="pgRole">—</b></span>
+  <span>Ver <b id="pgVer">—</b></span>
+  <span>Windows <b id="pgCount">0</b></span>
+  <span class="rec">● live</span>
+</div>
+
+<div id="pgCanvas">
+  <div id="pgWorld">
+    <div id="pgGrid"></div>
+  </div>
+  <div class="pg-empty" id="pgEmpty" style="display:none;">
+    Empty field.<br>Press <strong>+ Add block</strong> to place the first window.
+  </div>
+  <div class="zoom-hint">scroll to zoom · drag to pan</div>
+  <div id="zoomBar">
+    <button class="zoom-btn" id="zoomOut" title="Zoom out">−</button>
+    <span id="zoomLabel">100%</span>
+    <button class="zoom-btn" id="zoomIn" title="Zoom in">+</button>
+    <button class="zoom-btn" id="zoomReset" title="Reset view" style="font-size:12px;">⌂</button>
+  </div>
+</div>
+
+<noscript><div style="max-width:560px;margin:80px auto;padding:24px;font:15px system-ui;text-align:center;">The field needs JavaScript enabled.</div></noscript>
+
+<script src="playground.js?v=6"></script>
+<script>
+window.addEventListener("load", function () {
+  setTimeout(function () {
+    var started = document.querySelector(".pg-window") ||
+      (document.getElementById("pgEmpty") && document.getElementById("pgEmpty").style.display === "block") ||
+      document.querySelector(".pg-modal-backdrop");
+    if (!started) {
+      var d = document.createElement("div");
+      d.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#0A0A0B;color:#fff;font:14px system-ui,sans-serif;padding:14px 18px;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.3);";
+      d.textContent = "The field UI did not start. Hard-refresh (Ctrl+Shift+R). If it persists, press F12, open Console, and send me the red error text.";
+      document.body.appendChild(d);
+    }
+  }, 3000);
+});
+</script>
+</body>
+</html>
