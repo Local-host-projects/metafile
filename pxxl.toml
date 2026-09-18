@@ -1,0 +1,24 @@
+# Pxxl deployment contract (https://docs.pxxl.app/api/pxxl-toml).
+# Pxxl reads this from the repo root at build time; mirror any change
+# in the Deploy dashboard review step.
+
+version = 1
+
+[build]
+language = "python"
+framework = "fastapi"
+packageManager = "pip"
+baseDirectory = "/"
+port = 8000
+installCommand = "pip install -r requirements.txt"
+buildCommand = ""
+# run.py binds $PORT (platform-provided), falls back to argv[1], then 8000.
+# Dual-stack (IPv4+IPv6) with an IPv4 fallback. Must be started from backend/
+# so `main` is importable, ./metafile.db lands next to the app, and the
+# frontend resolves via ../frontend.
+startCommand = "cd backend && python run.py"
+
+[env]
+PYTHONUNBUFFERED = "1"
+# Secrets (SECRET_KEY, PAYSTACK_*, APP_URL, ALLOW_FREE_UPGRADE, DATABASE_URL)
+# must NOT live here -- add them in the Pxxl dashboard under Secrets.

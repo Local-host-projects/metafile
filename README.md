@@ -21,9 +21,39 @@ python run.py            # serves http://localhost:8000 (dual-stack)
 
 Or double-click `start-server.bat` in the repo root.
 
+## Deploy (Pxxl)
+
+The repo ships a `pxxl.toml` build contract, so Pxxl detects the stack and
+build plan automatically (Python/FastAPI/pip, port 8000).
+
+1. Sign up at [pxxl.app](https://pxxl.app) and install the **Pxxl GitHub
+   App**, giving it access to this repository.
+2. Dashboard → **Deploy** → source **GitHub** → pick this repo and branch.
+3. **Review configuration** — it should read:
+   - base directory `/`, start command `cd backend && python run.py`,
+     port `8000` (the app binds Pxxl's `$PORT` automatically, 8000 fallback)
+   - secrets — add under **Secrets** (project scope), then **redeploy** so
+     they reach the runtime:
+     - `SECRET_KEY` — long random string (generate:
+       `python -c "import secrets; print(secrets.token_hex(32))"`).
+       Without it, a new key is minted per deploy and login sessions reset.
+     - `APP_URL` — your Pxxl public URL (used for Paystack redirects).
+     - `ALLOW_FREE_UPGRADE=false` — the dev bypass must be off in public.
+     - `PAYSTACK_SECRET_KEY` / `PAYSTACK_PUBLIC_KEY` — when taking payments.
+     - `DATABASE_URL` — e.g. `sqlite:////data/metafile.db` **with a
+       persistent volume mounted at `/data`** (Compute & Scaling → Add
+       Volume). Without a volume, data is ephemeral and resets on every
+       redeploy or restart.
+4. **Deploy Project** and follow the log until the route publishes.
+   Verify: `https://<your-app>/<llms.txt>` renders the agent guide.
+
+Notes: run a single worker — the SSE live-sync bus is in-process (swap in
+redis before scaling horizontally). Changing any secret requires a fresh
+deploy for the runtime to see it.
+
 ## Deploy (Railway)
 
-The repo is Railway-ready (`railway.json` + root `requirements.txt` +
+The repo is also Railway-ready (`railway.json` + root `requirements.txt` +
 `Procfile`):
 
 1. Push to GitHub, then in Railway: **New Project → Deploy from GitHub
