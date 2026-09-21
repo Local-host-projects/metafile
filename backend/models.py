@@ -169,12 +169,58 @@ class Payment(Base):
     decided_at = Column(Float, nullable=True)
 
 
+def _default_db_url() -> str:
+    # Absolute path next to this file -- never CWD-relative, so the DB
+    # location can't shift depending on how the process was launched.
+    here = Path(__file__).resolve().parent / "metafile.db"
+    return f"sqlite:///{here.as_posix()}"
+
+
+def _resolve_db_file(engine):
+    try:
+        db_name = engine.url.database or ""
+        if db_name and db_name != ":memory:":
+            p = Path(db_name)
+            return p if p.is_absolute() else Path.cwd() / p
+    except Exception:
+        pass
+    return None
+
+
+def _ensure_writable(engine):
+    """Prove sqlite-level writability NOW (rolled-back DDL forces a
+    read-write open incl. journal creation). Raises a clear RuntimeError
+    instead of letting the app boot and die on its first HTTP request --
+    exactly the confusing 'HTTP readiness check failed' hosting failure."""
+    db_file = _resolve_db_file(engine)
+    if db_file is None:
+        return
+    try:
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    try:
+        conn = engine.connect()
+        try:
+            trans = conn.begin()
+            conn.exec_driver_sql("CREATE TABLE IF NOT EXISTS _deploy_canary (id INTEGER PRIMARY KEY)")
+            trans.rollback()
+        finally:
+            conn.close()
+    except Exception as e:
+        raise RuntimeError(
+            f"Metafile database is not writable at {db_file}. "
+            f"Attach a persistent volume and set DATABASE_URL to a path inside it "
+            f"(e.g. sqlite:////data/metafile.db). Original error: {e}"
+        )
+    print(f"[metafile] database ready: {db_file}", flush=True)
+
+
 def make_engine(db_path: str = None):
-    """DATABASE_URL env var wins (e.g. sqlite:////data/metafile.db with a
-    mounted volume on Railway); default is ./metafile.db next to the app."""
     if db_path is None:
-        db_path = os.environ.get("DATABASE_URL", "sqlite:///./metafile.db")
+        db_path = os.environ.get("DATABASE_URL", _default_db_url())
     engine = create_engine(db_path, connect_args={"check_same_thread": False})
+    _ensure_writable(engine)
     Base.metadata.create_all(engine)
     return engine
 
@@ -186,14 +232,9 @@ def make_session_factory(engine):
 def init_db(engine):
     """Create new tables, add new columns to old ones, and backfill one
     Artifact row per pre-existing metafile. Backs the sqlite file up first.
+    Writability was already proven by make_engine's canary.
     Safe to run on every boot (idempotent)."""
-    db_file = None
-    try:
-        db_name = engine.url.database or ""
-        if db_name and db_name != ":memory:":
-            db_file = Path(db_name)
-    except Exception:
-        db_file = None
+    db_file = _resolve_db_file(engine)
 
     if db_file is not None and db_file.exists():
         bak = db_file.with_suffix(".db.bak")
