@@ -40,16 +40,35 @@ build plan automatically (Python/FastAPI/pip, port 8000).
      - `APP_URL` — your Pxxl public URL (used for Paystack redirects).
      - `ALLOW_FREE_UPGRADE=false` — the dev bypass must be off in public.
      - `PAYSTACK_SECRET_KEY` / `PAYSTACK_PUBLIC_KEY` — when taking payments.
-     - `DATABASE_URL` — e.g. `sqlite:////data/metafile.db` **with a
-       persistent volume mounted at `/data`** (Compute & Scaling → Add
-       Volume). Without a volume, data is ephemeral and resets on every
-       redeploy or restart.
-4. **Deploy Project** and follow the log until the route publishes.
-   Verify: `https://<your-app>/<llms.txt>` renders the agent guide.
+     - `DATABASE_URL` — **use Neon Postgres by default** (see below).
+       The sqlite fallback (`sqlite:////data/metafile.db` with a persistent
+       volume mounted at `/data`) works but loses everything the volume
+       isn't attached; Postgres is the durable option.
+
+### Database: Neon Postgres (recommended)
+
+Sqlite was the original problem — read-only filesystems, ephemeral
+storage, one file to lose. Postgres removes the whole failure class:
+
+1. Create a free project at [neon.tech](https://neon.tech), open the
+   dashboard for your new database, and copy the **connection string**
+   (it looks like
+   `postgresql://user:password@ep-xxx.neon.tech/dbname?sslmode=require`).
+   Keep `?sslmode=require` on the end. The pooled endpoint also works.
+2. In Pxxl → **Secrets**, set `DATABASE_URL` to that string (project
+   scope). No volume needed — Neon holds the data, not the container.
+3. **Redeploy.** The container log should show
+   `[metafile] database ready: postgres at <host>/<dbname>` at startup,
+   then tables are created automatically on first boot. Production
+   starts with an empty database (local sqlite data does not transfer).
+4. Verify: `https://<your-app>/llms.txt` renders the agent guide.
 
 Notes: run a single worker — the SSE live-sync bus is in-process (swap in
 redis before scaling horizontally). Changing any secret requires a fresh
-deploy for the runtime to see it.
+deploy for the runtime to see it. If the log instead shows
+`RuntimeError: Cannot reach the Postgres database…`, the URL is wrong,
+Neon is paused, or the secret didn't reach the runtime — fix and
+redeploy.
 
 ## Deploy (Railway)
 

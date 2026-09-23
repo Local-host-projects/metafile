@@ -18,7 +18,7 @@ import hashlib
 import secrets
 from pathlib import Path
 from sqlalchemy import (
-    Column, String, Integer, Float, Text, ForeignKey, create_engine
+    Column, String, Integer, Float, Text, ForeignKey, create_engine, inspect
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
@@ -188,10 +188,27 @@ def _resolve_db_file(engine):
 
 
 def _ensure_writable(engine):
-    """Prove sqlite-level writability NOW (rolled-back DDL forces a
+    """Boot-time proof the database is usable, with a clear error otherwise.
+
+    sqlite: prove file-level writability (rolled-back DDL forces a
     read-write open incl. journal creation). Raises a clear RuntimeError
     instead of letting the app boot and die on its first HTTP request --
-    exactly the confusing 'HTTP readiness check failed' hosting failure."""
+    exactly the confusing 'HTTP readiness check failed' hosting failure.
+    Postgres (Neon): prove connectivity with SELECT 1 instead.
+    """
+    if engine.dialect.name != "sqlite":
+        try:
+            with engine.connect() as conn:
+                conn.exec_driver_sql("SELECT 1")
+        except Exception as e:
+            raise RuntimeError(
+                f"Cannot reach the Postgres database at {engine.url.host or 'unknown host'}. "
+                f"Check DATABASE_URL (Neon connection string, keep ?sslmode=require). "
+                f"Original error: {e}"
+            )
+        print(f"[metafile] database ready: postgres at {engine.url.host}/{engine.url.database}",
+              flush=True)
+        return
     db_file = _resolve_db_file(engine)
     if db_file is None:
         return
@@ -219,7 +236,19 @@ def _ensure_writable(engine):
 def make_engine(db_path: str = None):
     if db_path is None:
         db_path = os.environ.get("DATABASE_URL", _default_db_url())
-    engine = create_engine(db_path, connect_args={"check_same_thread": False})
+    if db_path.startswith("sqlite"):
+        engine = create_engine(db_path, connect_args={"check_same_thread": False})
+    else:
+        # Postgres (Neon): check_same_thread is sqlite-only and would break
+        # psycopg2; pre_ping drops stale pooled connections instead.
+        try:
+            engine = create_engine(db_path, pool_pre_ping=True)
+        except Exception as e:
+            raise RuntimeError(
+                f"Cannot build a Postgres engine from DATABASE_URL "
+                f"(is psycopg2-binary installed and the URL valid?). "
+                f"Original error: {e}"
+            )
     _ensure_writable(engine)
     Base.metadata.create_all(engine)
     return engine
@@ -231,10 +260,12 @@ def make_session_factory(engine):
 
 def init_db(engine):
     """Create new tables, add new columns to old ones, and backfill one
-    Artifact row per pre-existing metafile. Backs the sqlite file up first.
+    Artifact row per pre-existing metafile (sqlite legacy only -- a fresh
+    Postgres starts with the final schema). Backs the sqlite file up first.
     Writability was already proven by make_engine's canary.
     Safe to run on every boot (idempotent)."""
-    db_file = _resolve_db_file(engine)
+    is_sqlite = engine.dialect.name == "sqlite"
+    db_file = _resolve_db_file(engine) if is_sqlite else None
 
     if db_file is not None and db_file.exists():
         bak = db_file.with_suffix(".db.bak")
@@ -246,17 +277,24 @@ def init_db(engine):
 
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
-        mf_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(metafiles)").all()]
+        if is_sqlite:
+            mf_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(metafiles)").all()]
+            log_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(mutation_log)").all()]
+        else:
+            insp = inspect(conn)
+            mf_cols = [c["name"] for c in insp.get_columns("metafiles")]
+            log_cols = [c["name"] for c in insp.get_columns("mutation_log")]
         if "owner_id" not in mf_cols:
             conn.exec_driver_sql("ALTER TABLE metafiles ADD COLUMN owner_id VARCHAR(64)")
 
-        log_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(mutation_log)").all()]
         if "artifact_id" not in log_cols:
             conn.exec_driver_sql("ALTER TABLE mutation_log ADD COLUMN artifact_id VARCHAR(64)")
 
-        import sqlite3 as _sqlite3
         n_artifacts = conn.exec_driver_sql("SELECT COUNT(*) FROM artifacts").scalar() or 0
-        if n_artifacts == 0:
+        # The legacy single-artifact columns only ever existed in sqlite
+        # files predating the multi-artifact model -- guard the backfill on
+        # them so a fresh Postgres never touches this path.
+        if n_artifacts == 0 and "artifact_type" in mf_cols:
             rows = conn.exec_driver_sql(
                 "SELECT id, artifact_type, content_json, bytes_used, version FROM metafiles"
             ).all()
@@ -278,12 +316,15 @@ def init_db(engine):
                 )
 
         # Legacy columns from the single-artifact era are unusable now: the
-        # new model never sets them, but the old table declares them NOT
+        # new model never sets them, but old sqlite tables declare them NOT
         # NULL, so every insert would fail. Content is already backfilled
-        # into artifacts above, so drop them (SQLite >= 3.35).
-        if _sqlite3.sqlite_version_info >= (3, 35, 0):
-            mf_cols = [r[1] for r in conn.exec_driver_sql("PRAGMA table_info(metafiles)").all()]
-            for legacy in ("artifact_type", "content_json"):
-                if legacy in mf_cols:
-                    conn.exec_driver_sql(f"ALTER TABLE metafiles DROP COLUMN {legacy}")
+        # into artifacts above, so drop them when present (both dialects
+        # support DROP COLUMN; SQLite needs >= 3.35).
+        legacy = [c for c in ("artifact_type", "content_json") if c in mf_cols]
+        if legacy and is_sqlite:
+            import sqlite3 as _sqlite3
+            if _sqlite3.sqlite_version_info < (3, 35, 0):
+                legacy = []
+        for col in legacy:
+            conn.exec_driver_sql(f"ALTER TABLE metafiles DROP COLUMN {col}")
 
