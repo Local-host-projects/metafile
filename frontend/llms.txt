@@ -105,6 +105,9 @@ token tiers: owner (arrange, approve) and collaborator (read + propose).
 Windows carry their metafile's rw token and an artifact_id, so content
 edits via /m/... render live into any field showing that window.
 
+Proposing never creates anything; only the owner's approval does — that is
+the permission gate for agent-initiated creation.
+
 Rule of thumb: artifact content ops check the ARTIFACT's version
 (`if_version` = artifact.version); add/remove/rename ops check the
 METAFILE's version (`if_version` = metafile.version). Both are in every
@@ -127,24 +130,6 @@ re-read it and retry; do not guess.
               live server-side, never cached.
 - media:      {"items": [{id, kind, mime, data_base64, caption}]} — append
               via /bulk with a base64 payload; list views omit payloads.
-
-## Playground sessions
-
-A session is a saved, zoomable arrangement of windows, each pinned to one
-artifact. Addressed as /session/{id}/{token} with two token tiers: owner
-(arrange, approve) and collaborator (read + propose).
-
-    GET  /sessions                          — list
-    POST /sessions  {name}                  — create (returns both links)
-    GET  /session/{id}/{tok}?op=fetch       — layout + role
-    ...&op=add_window&metafile_id=M&m_token={rw}&artifact_id=A&if_version=V
-    ...&op=move_resize&window_id=W&x=&y=&w=&h=&z=
-    ...&op=remove_window&window_id=W
-    POST /session/{id}/{tok}/propose?name=N&artifact_type=T&agent=you&reason=R
-    ...&op=list_proposals / approve_proposal&proposal_id=P / reject_proposal
-
-Proposing never creates anything; only the owner's approval does — that is
-the permission gate for agent-initiated creation.
 
 ## Accounts, billing, errors
 

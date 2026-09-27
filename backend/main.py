@@ -1383,11 +1383,40 @@ def _ai_doc() -> str:
     return (FRONTEND_DIR / "llms.txt").read_text(encoding="utf-8")
 
 
+# User-Agents that fetch as machines, not humans. Matched case-insensitively
+# as substrings; none of these appear in real browser UA strings.
+AGENT_UAS = (
+    # AI assistants / crawlers
+    "gptbot", "chatgpt-user", "oai-searchbot",
+    "claudebot", "claude-user", "anthropic-ai",
+    "perplexitybot", "perplexity-user",
+    "google-extended", "gemini",
+    "bytespider", "ccbot", "facebookbot", "meta-externalagent",
+    "applebot", "cohere-ai", "mistralai-user", "omgili", "diffbot", "youbot",
+    # generic machine HTTP clients
+    "curl", "wget", "python-requests", "python-urllib", "go-http-client",
+    "okhttp", "node-fetch", "undici", "axios", "postmanruntime",
+)
+
+
+def _is_agent_client(request: Request) -> bool:
+    ua = (request.headers.get("user-agent") or "").lower()
+    if not ua:
+        return True  # no UA header = machine client
+    return any(token in ua for token in AGENT_UAS)
+
+
 @app.get("/", include_in_schema=False)
 def root_entry(request: Request):
-    """Browsers get the app; everything else (curl, agents, no Accept or
-    Accept: */*) gets the machine-readable agent guide. This makes the AI
-    doc literally the first thing an agent reads when it hits the URL."""
+    """Browsers get the app; everything else gets the machine-readable
+    agent guide -- this makes the guide literally the first thing an agent
+    reads when it hits the URL.
+
+    User-Agent takes precedence over Accept: AI fetch tools (ChatGPT,
+    Claude, Perplexity, …) send browser-like Accept headers, so checking
+    Accept alone would hand them the JS app shell they cannot execute."""
+    if _is_agent_client(request):
+        return PlainTextResponse(_ai_doc(), media_type="text/plain; charset=utf-8")
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
         return FileResponse(str(FRONTEND_DIR / "index.html"))
