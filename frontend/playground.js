@@ -136,6 +136,49 @@ function initZUI() {
     view.x = 60; view.y = 40; view.z = 1;
     applyView();
   });
+
+  // touch: one finger pans, two fingers pinch-zoom around their midpoint.
+  // (touch-action:none on #pgCanvas disables native gestures; window
+  // dragging keeps working through compatibility mouse events.)
+  let panT = null, pinchD0 = 0, pinchZ0 = 1;
+  const pinchDist = (t) => Math.hypot(
+    t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  canvas.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 1) {
+      panT = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: view.x, oy: view.y };
+    } else if (e.touches.length === 2) {
+      panT = null;
+      pinchD0 = pinchDist(e.touches);
+      pinchZ0 = view.z;
+    }
+  }, { passive: true });
+  canvas.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 1 && panT) {
+      e.preventDefault();
+      view.x = panT.ox + (e.touches[0].clientX - panT.x);
+      view.y = panT.oy + (e.touches[0].clientY - panT.y);
+      applyView();
+    } else if (e.touches.length === 2 && pinchD0 > 0) {
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+      const nz = Math.min(Z_MAX, Math.max(Z_MIN, pinchZ0 * pinchDist(e.touches) / pinchD0));
+      if (nz !== view.z) {
+        view.x = mx - (mx - view.x) * (nz / view.z);
+        view.y = my - (my - view.y) * (nz / view.z);
+        view.z = nz;
+        applyView();
+      }
+    }
+  }, { passive: false });
+  canvas.addEventListener("touchend", (e) => {
+    if (e.touches.length === 0) { panT = null; pinchD0 = 0; }
+    else if (e.touches.length === 1) {
+      panT = { x: e.touches[0].clientX, y: e.touches[0].clientY, ox: view.x, oy: view.y };
+      pinchD0 = 0;
+    }
+  });
   applyView();
 }
 

@@ -1156,6 +1156,73 @@ body.playground-body { overflow: hidden; }
 }
 .field-mode button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
 
+/* ================= playground shell (flex, wraps on small screens) ================= */
+
+body.playground-body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+#pgTopbar { flex: 0 0 auto; height: auto; min-height: 60px; flex-wrap: wrap; row-gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+#pgMeta { flex: 0 0 auto; }
+#pgCanvas { flex: 1 1 auto; min-height: 0; height: auto; touch-action: none; }
+
+#drawCanvas { height: auto; }
+
+/* ================= mobile ================= */
+
+@media (max-width: 640px) {
+  /* topbar */
+  #topbar { padding: 0 12px; gap: 10px; }
+  .brand img { width: 25px; height: 25px; }
+  .brand-name { font-size: 15px; }
+
+  /* dashboard */
+  .page { padding: 20px 14px 70px; }
+  .page-head h1 { font-size: 25px; }
+  .page-head p { font-size: 13px; }
+  .head-actions { width: 100%; }
+  .head-actions .btn { flex: 1; padding-left: 8px; padding-right: 8px; }
+  .grid-cards { grid-template-columns: 1fr; gap: 12px; }
+  .file-card { padding: 16px; }
+  .file-actions { flex-wrap: wrap; }
+
+  /* detail */
+  .doc-head { padding: 16px; }
+  .doc-title { font-size: 22px; }
+  .doc-actions { flex-wrap: wrap; }
+  .doc-actions .btn { flex: 1 1 45%; }
+  .panel { padding: 16px 13px; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs .tab { flex-shrink: 0; }
+  .artifact-bar { flex-wrap: wrap; gap: 8px; }
+  .inline-form { flex-wrap: wrap; }
+  .inline-form .btn { width: 100%; }
+  .ledger-row { gap: 9px; padding: 10px 2px; font-size: 13.5px; }
+  .timer-big { font-size: 19px; width: 76px; }
+  .media-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .html-grid textarea, .html-grid iframe { height: 320px; }
+  .telemetry { gap: 7px; }
+
+  /* modals become bottom sheets */
+  .modal-backdrop, .pg-modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal, .pg-modal { width: 100%; max-width: 100%; border-radius: 22px 22px 0 0; padding: 22px 18px 26px; }
+  .type-pick { grid-template-columns: 1fr; }
+  .pay-channels { flex-direction: column; }
+  .pay-channels .chan { flex-direction: row; justify-content: center; padding: 10px; }
+
+  /* auth */
+  .auth-card { border-radius: 22px; }
+  .auth-wrap { padding: 20px 12px; }
+
+  /* playground */
+  #pgTopbar { gap: 8px; padding-left: 12px; padding-right: 12px; }
+  #pgTopbar input { font-size: 14px; }
+  #pgTopbar .pg-logo { width: 24px; height: 24px; }
+  .pg-btn { padding: 7px 10px; font-size: 11px; }
+  #pgMeta { gap: 12px; padding-left: 12px; padding-right: 12px; }
+  #zoomBar { right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .pg-window { min-width: 220px; border-radius: 15px; }
+  .pg-empty { padding: 26px 20px; font-size: 13px; }
+}
+
 /* ================= responsive ================= */
 
 @media (max-width: 880px) {
