@@ -38,6 +38,14 @@ The query-string form also accepts POST for large payloads:
 Most content operations need `artifact=<artifact_id>` — fetch first, pick
 the block you want, keep its id.
 
+There is also a manual at the door: `op=manual` (or a bare share link
+fetched by an AI client) returns a Markdown interfacing manual tailored
+to THAT metafile — its blocks, live versions, the two rules, and
+ready-to-call URLs with the credential embedded. Share THAT link when
+you want another agent to start working with zero context:
+
+    GET /m/{metafile_id}?token={token}&op=manual
+
 ## Operations (op=...)
 
 Reads (rw or ro token):

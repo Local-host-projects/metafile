@@ -180,6 +180,91 @@ def metafile_view(mf: Metafile, role: str = "owner") -> dict:
     }
 
 
+def _metafile_manual(mf: Metafile, request: Request, token: Optional[str]) -> str:
+    """The interfacing manual for THIS metafile, tailored to its blocks:
+    inventory with live versions plus ready-to-call URLs carrying the
+    reader's own credential. Served as Markdown so an agent can act on it
+    immediately -- the manual at the door."""
+    base = str(request.base_url).rstrip("/")
+    murl = f"{base}/m/{mf.id}"
+    lines = [
+        f"# {mf.name} -- agent interface manual",
+        "",
+        "You fetched a Metafile share URL. This document is the manual for "
+        "THIS object: what it holds, its current versions, and the exact "
+        "calls to read and change it. No account needed -- the token in "
+        "these URLs IS the permission.",
+        "",
+        "## This object",
+        f"- id: {mf.id}",
+        f"- tier/size: {mf.tier}, {mf.bytes_used}/{mf.byte_limit} bytes used",
+        f"- file version: {mf.version} (structural ops check THIS)",
+        f"- blocks: {len(mf.artifacts)}",
+        "",
+        "## The two rules",
+        "1. Reads need nothing more. Every WRITE needs `agent=<your-name>` "
+        "(your fingerprint, recorded forever) and `if_version=<version you read>`.",
+        "2. Content ops (set/append/delete/get/search) check the BLOCK "
+        "version. Structural ops (add/remove/rename blocks, rename file) "
+        "check the FILE version above. If the world moved you get HTTP 409 "
+        "with the current state -- re-fetch, re-apply, retry. Never guess "
+        "versions. URL-encode values containing spaces or symbols.",
+        "",
+        "## Blocks",
+    ]
+    ops_hint = {
+        "facts": "append/set/delete facts, search",
+        "spreadsheet": "set cells (formulas like =A1*2 allowed), get evaluated values",
+        "html": "replace full source via POST /bulk",
+        "canvas": "append strokes (they merge, never overwrite)",
+        "calendar": "append/delete events (needs title + start)",
+        "timer": "set start/pause/reset (remaining is computed live)",
+        "media": "append items via POST /bulk, get full payloads",
+    }
+    for a in mf.artifacts:
+        lines.append(
+            f"- {a.name} [{TYPE_LABELS[a.artifact_type]}] "
+            f"id={a.id} v{a.version} -- {ops_hint[a.artifact_type]}"
+        )
+    lines += ["", "## Call this now"]
+    if token:
+        q = f"?token={token}"
+        lines.append("Your credential is already embedded in these URLs.")
+        lines.append(f"- read everything: GET {murl}{q}&op=fetch")
+        for a in mf.artifacts:
+            aid, aver = a.id, a.version
+            if a.artifact_type == "facts":
+                lines.append(f"- add a fact to '{a.name}': GET {murl}{q}&op=append&artifact={aid}&value=TEXT_HERE&agent=YOU&if_version={aver}")
+                lines.append(f"- search '{a.name}': GET {murl}{q}&op=search&artifact={aid}&q=QUERY&limit=10")
+            elif a.artifact_type == "spreadsheet":
+                lines.append(f"- write a cell in '{a.name}': GET {murl}{q}&op=set&artifact={aid}&path=A1&value=10&agent=YOU&if_version={aver}")
+            elif a.artifact_type == "html":
+                lines.append(f"- rewrite '{a.name}': POST {murl}/bulk{q} {{\"op\":\"set\",\"artifact\":\"{aid}\",\"value\":{{\"html\":\"<h1>hi</h1>\"}},\"if_version\":{aver},\"agent\":\"YOU\"}}")
+            elif a.artifact_type == "canvas":
+                lines.append(f"- draw on '{a.name}': POST {murl}/bulk{q} {{\"op\":\"append\",\"artifact\":\"{aid}\",\"value\":{{\"color\":\"#1D1D1F\",\"points\":[[0,0],[9,9]]}},\"if_version\":{aver},\"agent\":\"YOU\"}}")
+            elif a.artifact_type == "calendar":
+                lines.append(f"- add an event to '{a.name}': POST {murl}/bulk{q} {{\"op\":\"append\",\"artifact\":\"{aid}\",\"value\":{{\"title\":\"Standup\",\"start\":\"2026-10-01T09:00:00\"}},\"if_version\":{aver},\"agent\":\"YOU\"}}")
+            elif a.artifact_type == "timer":
+                lines.append(f"- start a timer in '{a.name}': GET {murl}{q}&op=set&artifact={aid}&path=TIMER_ID&value=start&agent=YOU&if_version={aver} (path = timer id from a fetch)")
+            elif a.artifact_type == "media":
+                lines.append(f"- upload to '{a.name}': POST {murl}/bulk{q} {{\"op\":\"append\",\"artifact\":\"{aid}\",\"value\":{{\"kind\":\"image\",\"mime\":\"image/png\",\"data_base64\":\"...\",\"caption\":\"...\"}},\"if_version\":{aver},\"agent\":\"YOU\"}}")
+        lines += [
+            f"- full history: GET {murl}{q}&op=history&limit=20",
+            f"- watch live changes: GET {base}/events/m/{mf.id}{q} (text/event-stream; re-fetch on every event)",
+            f"- add a block: GET {murl}{q}&op=add_artifact&type=facts&name=Notes&agent=YOU&if_version={mf.version} (uses FILE version)",
+        ]
+    else:
+        lines += [
+            "You arrived with an owner session, not a share link: send your "
+            "Bearer token header on every call below (replace {TOKEN} with a "
+            "share-link token from the UI to make them copy-paste ready).",
+            f"- read everything: GET {murl}?token={{TOKEN}}&op=fetch",
+            "- then follow the same patterns as above with your credential.",
+        ]
+    lines += ["", f"## Full protocol", f"{base}/llms.txt"]
+    return "\n".join(lines)
+
+
 def record_mutation(db, mf, artifact_id, agent, op, path, old_version, summary):
     db.add(MutationLog(
         metafile_id=mf.id, artifact_id=artifact_id, agent=agent, op=op,
@@ -673,7 +758,7 @@ def query_metafile(
     metafile_id: str,
     request: Request,
     token: Optional[str] = Query(None),
-    op: str = Query("fetch"),
+    op: Optional[str] = Query(None),
     artifact: Optional[str] = Query(None),
     path: Optional[str] = Query(None),
     value: Optional[str] = Query(None),
@@ -694,7 +779,7 @@ def query_metafile_pathauth(
     metafile_id: str,
     token: str,
     request: Request,
-    op: str = Query("fetch"),
+    op: Optional[str] = Query(None),
     artifact: Optional[str] = Query(None),
     path: Optional[str] = Query(None),
     value: Optional[str] = Query(None),
@@ -723,6 +808,16 @@ def _handle_query(metafile_id, request, token, op, artifact_id, path, value,
         mf = get_metafile_or_404(db, metafile_id)
         required = Scope.WRITE if op in WRITE_OPS else Scope.READ
         role, _ = resolve_access(db, mf, request, token, required)
+
+        # The manual at the door: explicit op=manual always serves it; a bare
+        # share link fetched by an AI client gets it too. Everything else
+        # keeps the JSON contract (scripts depend on it).
+        if op == "manual" or (op is None and _is_agent_client(request)):
+            return PlainTextResponse(
+                _metafile_manual(mf, request, token),
+                media_type="text/markdown; charset=utf-8",
+            )
+        op = op or "fetch"
 
         if op == "fetch":
             return metafile_view(mf, role)

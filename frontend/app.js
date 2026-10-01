@@ -969,7 +969,9 @@ async function openShareModal() {
         <button class="icon-btn" data-copy="rw" title="Copy read-write link">${ICONS.link}</button></div>
       <div class="link-row"><span class="tag ro">RO</span><code>${escapeHtml(`${API}/m/${d.id}?token=${tokens.ro}`)}</code>
         <button class="icon-btn" data-copy="ro" title="Copy read-only link">${ICONS.link}</button></div>
-      <p style="font-size:12.5px;color:var(--ink-2);">Read-write links can edit. Read-only links can only fetch. Rotating invalidates all old links instantly.</p>
+      <div class="link-row"><span class="tag ai">AI</span><code>${escapeHtml(`${API}/m/${d.id}?token=${tokens.rw}&op=manual`)}</code>
+        <button class="icon-btn" data-copy="ai" title="Copy agent manual link">${ICONS.link}</button></div>
+      <p style="font-size:12.5px;color:var(--ink-2);">Read-write links can edit. Read-only links can only fetch. The <b>AI</b> link opens the interfacing manual for this file — hand it to any agent and it knows what to do. Rotating invalidates all old links instantly.</p>
       <div class="modal-foot" style="margin-top:6px;">
         <button class="btn btn-danger-ghost btn-sm" id="rotateBtn">Rotate links</button>
       </div>` : `
@@ -979,9 +981,12 @@ async function openShareModal() {
       </div>`;
     body.querySelectorAll("[data-copy]").forEach((b) => {
       b.addEventListener("click", () => {
-        const url = `${API}/m/${d.id}?token=${b.dataset.copy === "rw" ? tokens.rw : tokens.ro}`;
+        const kind = b.dataset.copy;
+        const url = kind === "ai"
+          ? `${API}/m/${d.id}?token=${tokens.rw}&op=manual`
+          : `${API}/m/${d.id}?token=${kind === "rw" ? tokens.rw : tokens.ro}`;
         copyText(url);
-        toast(`${b.dataset.copy === "rw" ? "Read-write" : "Read-only"} link copied.`);
+        toast(`${kind === "rw" ? "Read-write" : kind === "ro" ? "Read-only" : "Agent manual"} link copied.`);
       });
     });
     body.querySelector("#rotateBtn").addEventListener("click", async () => {
